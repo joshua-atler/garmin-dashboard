@@ -2,3 +2,4 @@ garmin-connect-personal-api-python
 matplotlib
 pandas
 numpy
+folium
