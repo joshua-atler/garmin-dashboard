@@ -321,6 +321,10 @@ with GarminPersonalApiClient(token.access_token) as client:
     # activity = 25151353266
     activity = 25171742584
     # activity = 20666926316
+    # activity = 24432361775
+    # activity = 23458204412
+    # activity = 23362331267
+    # activity = 22824200778
     activity_summary = client.get(f"/activity-service/activity/{activity}")
     activity_details = client.get(
         f"/activity-service/activity/{activity}/details")
