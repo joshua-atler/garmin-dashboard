@@ -1,6 +1,7 @@
 import json
 import time
 from pathlib import Path
+from datetime import date, timedelta
 
 from garmin_personal_api import (
     GarminPersonalApiClient,
@@ -8,13 +9,15 @@ from garmin_personal_api import (
     resolve_api_key,
 )
 
+DATA_DIR = Path(__file__).parent / "data"
+STEPS_PATH = DATA_DIR / "daily_steps.json"
 
-def sync_recent_runs(
+
+def sync_all(
     max_activities: int | None = 100,
     page_size: int = 100,
     only_new: bool = True,
 ):
-    DATA_DIR = Path(__file__).parent / "data"
     DATA_DIR.mkdir(exist_ok=True)
 
     api_key = resolve_api_key()
@@ -85,12 +88,56 @@ def sync_recent_runs(
             start += len(batch)
             time.sleep(0.5)
 
+        today = date.today()
+        # Refresh the last 28 days on routine syncs (or pass an earlier start_date for backfill)
+        sync_daily_steps(client, start_date=today -
+                         timedelta(days=27), end_date=today)
+
     print(f"Sync complete. {saved} new run(s) cached in {DATA_DIR}.")
 
     return saved
 
 
+def sync_daily_steps(
+    client: GarminPersonalApiClient,
+    start_date: date,
+    end_date: date,
+) -> int:
+    """
+    Fetch daily step stats in 28-day chunks and merge into data/daily_steps.json.
+    Returns the number of days updated/added.
+    """
+    existing: dict[str, dict] = {}
+    if STEPS_PATH.exists():
+        for entry in json.loads(STEPS_PATH.read_text()):
+            if "calendarDate" in entry:
+                existing[entry["calendarDate"]] = entry
+
+    updated = 0
+    chunk_start = start_date
+
+    while chunk_start <= end_date:
+        chunk_end = min(chunk_start + timedelta(days=27), end_date)
+        batch = client.get(
+            f"/usersummary-service/stats/steps/daily/{chunk_start.isoformat()}/{chunk_end.isoformat()}"
+        )
+
+        for day in batch or []:
+            cal_date = day.get("calendarDate")
+            if cal_date:
+                existing[cal_date] = day
+                updated += 1
+
+        chunk_start = chunk_end + timedelta(days=1)
+        time.sleep(0.25)
+
+    merged = sorted(existing.values(), key=lambda d: d["calendarDate"])
+    STEPS_PATH.write_text(json.dumps(merged, indent=2))
+    print(f"Synced {updated} day(s) of step data into {STEPS_PATH}.")
+    return updated
+
+
 if __name__ == "__main__":
     # Backfill your full history once with max_activities=None, only_new=False
     # Then switch back to sync_recent_runs(max_activities=100, only_new=True)
-    sync_recent_runs(max_activities=None, only_new=True)
+    sync_all(max_activities=None, only_new=True)

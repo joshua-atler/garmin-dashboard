@@ -4,7 +4,7 @@ from pathlib import Path
 from threading import Lock
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from sync_garmin import sync_recent_runs
+from sync_garmin import sync_all
 
 app = FastAPI(title="Garmin Telemetry API")
 
@@ -19,6 +19,7 @@ sync_lock = Lock()
 last_sync_result: dict = {"saved": 0, "error": None}
 
 DATA_DIR = Path(__file__).parent / "data"
+STEPS_FILE = DATA_DIR / "daily_steps.json"
 METERS_PER_MILE = 1609.344
 FEET_PER_METER = 3.28084
 
@@ -31,7 +32,7 @@ def format_mmss(total_seconds: float) -> str:
 def _run_sync_task():
     global last_sync_result
     try:
-        saved = sync_recent_runs(max_activities=None, only_new=False)
+        saved = sync_all(max_activities=None, only_new=False)
         last_sync_result = {"saved": saved, "error": None}
     except Exception as exc:
         last_sync_result = {"saved": 0, "error": str(exc)}
@@ -139,3 +140,22 @@ def trigger_sync(background_tasks: BackgroundTasks):
 
     background_tasks.add_task(_run_sync_task)
     return {"syncing": True}
+
+
+@app.get("/api/steps")
+def get_daily_steps(start: str | None = None, end: str | None = None):
+    if not STEPS_FILE.exists():
+        return []
+
+    days = json.loads(STEPS_FILE.read_text())
+    return [
+        {
+            "date": d["calendarDate"],
+            "steps": d.get("totalSteps") or 0,
+            "goal": d.get("stepGoal") or 0,
+            "distanceMi": round((d.get("totalDistance") or 0) / METERS_PER_MILE, 2),
+        }
+        for d in days
+        if (start is None or d["calendarDate"] >= start)
+        and (end is None or d["calendarDate"] <= end)
+    ]
