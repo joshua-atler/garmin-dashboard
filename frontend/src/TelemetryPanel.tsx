@@ -123,7 +123,7 @@ function TelemetryChart({
           strokeWidth={2}
           dot={false}
           connectNulls
-          isAnimationActive={false}
+          isAnimationActive={true}
         />
 
         <Line
@@ -135,7 +135,7 @@ function TelemetryChart({
           strokeWidth={2}
           dot={false}
           connectNulls
-          isAnimationActive={false}
+          isAnimationActive={true}
         />
 
         <Area
@@ -148,7 +148,7 @@ function TelemetryChart({
           fillOpacity={0.15}
           strokeWidth={1.5}
           dot={false}
-          isAnimationActive={false}
+          isAnimationActive={true}
         />
       </ComposedChart>
     </ResponsiveContainer>

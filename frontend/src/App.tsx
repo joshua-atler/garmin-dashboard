@@ -46,17 +46,31 @@ export default function App() {
 
   if (loading) {
     return (
-      <Box sx={{ display: "flex", justifyContent: "center", mt: 8 }}>
-        <CircularProgress />
-      </Box>
+      <ThemeProvider theme={theme}>
+        <Box sx={{ display: "flex", justifyContent: "center", mt: 8 }}>
+          <CircularProgress />
+        </Box>
+      </ThemeProvider>
     );
   }
 
-  if (error || !activity) {
+  if (error) {
     return (
-      <Container maxWidth="md" sx={{ mt: 4 }}>
-        <Alert severity="error">{error ?? "No activities found."}</Alert>
-      </Container>
+      <ThemeProvider theme={theme}>
+        <Container maxWidth="md" sx={{ mt: 4 }}>
+          <Alert severity="error">{error}</Alert>
+        </Container>
+      </ThemeProvider>
+    );
+  }
+
+  if (!activity) {
+    return (
+      <ThemeProvider theme={theme}>
+        <Container maxWidth="md" sx={{ mt: 4 }}>
+          <Alert severity="info">No activities found.</Alert>
+        </Container>
+      </ThemeProvider>
     );
   }
 
