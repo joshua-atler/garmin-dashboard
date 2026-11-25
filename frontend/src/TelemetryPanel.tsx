@@ -76,19 +76,21 @@ function TelemetryChart({
         />
 
         <YAxis
-          yAxisId="heart"
+          yAxisId="right-2-elevation"
+          orientation="right"
+          width={50}
+          domain={["dataMin - 10", "dataMax + 20"]}
+          tickFormatter={(val: number) => `${Math.round(val)} ft`}
+          stroke="#10b981"
+        />
+
+        <YAxis
+          yAxisId="right-1-heart"
           orientation="right"
           width={80}
           domain={["dataMin - 5", "dataMax + 5"]}
           tickFormatter={(val: number) => `${Math.round(val)} bpm`}
           stroke="#ef4444"
-        />
-
-        <YAxis
-          yAxisId="elevation"
-          domain={["dataMin - 10", "dataMax + 20"]}
-          width={0}
-          hide
         />
 
         <Tooltip
@@ -127,7 +129,7 @@ function TelemetryChart({
         />
 
         <Line
-          yAxisId="heart"
+          yAxisId="right-1-heart"
           type="monotone"
           dataKey="heartRate"
           name="Heart Rate"
@@ -139,7 +141,7 @@ function TelemetryChart({
         />
 
         <Area
-          yAxisId="elevation"
+          yAxisId="right-2-elevation"
           type="monotone"
           dataKey="elevationFt"
           name="Elevation"

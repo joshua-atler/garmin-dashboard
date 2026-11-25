@@ -42,8 +42,6 @@ export default function App() {
     error: telemetryError,
   } = useActivityTelemetry(activeId);
 
-  console.log(telemetry);
-
   if (loading) {
     return (
       <ThemeProvider theme={theme}>
@@ -107,6 +105,7 @@ export default function App() {
       />
 
       {/* Main Content Container */}
+      {/* <Container maxWidth={"xl"} sx={{ py: 3, maxWidth: 1800 }}> */}
       <Container maxWidth="xl" sx={{ py: 3 }}>
         {/* Run Header */}
         <ActivityHeader activity={activity} />
@@ -128,7 +127,7 @@ export default function App() {
           }}
         >
           <Box sx={{ minWidth: 0 }}>
-            <RouteMapPanel />
+            <RouteMapPanel telemetry={telemetry} />
           </Box>
 
           <Box
