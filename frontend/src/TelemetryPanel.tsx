@@ -1,4 +1,14 @@
-import { Box, Paper, Typography, useTheme } from "@mui/material";
+import DownloadIcon from "@mui/icons-material/Download";
+import {
+  Box,
+  IconButton,
+  Tooltip as MuiTooltip,
+  Paper,
+  Typography,
+  useTheme,
+} from "@mui/material";
+import { toPng } from "html-to-image";
+import { useRef } from "react";
 import {
   Area,
   CartesianGrid,
@@ -9,8 +19,15 @@ import {
   Tooltip,
   XAxis,
   YAxis,
+  type LegendPayload,
 } from "recharts";
 import type { ActivityTelemetry, TelemetryPoint } from "./types";
+
+const ITEM_ORDER: Record<string, number> = {
+  paceMinPerMi: 1,
+  heartRate: 2,
+  elevationFt: 3,
+};
 
 function TelemetryChart({
   telemetryPoints,
@@ -30,7 +47,7 @@ function TelemetryChart({
     <ResponsiveContainer width="100%" height="100%">
       <ComposedChart
         data={telemetryPoints ?? []}
-        margin={{ top: 12, right: 12, bottom: 8, left: 4 }}
+        margin={{ top: 12, right: 36, bottom: 8, left: 16 }}
       >
         <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} />
 
@@ -48,17 +65,20 @@ function TelemetryChart({
           type="number"
           orientation="left"
           reversed
-          width={48}
+          width={40}
           domain={[6, 10]}
+          ticks={[6, 7, 8, 9, 10]}
           allowDataOverflow
           tickFormatter={(val: number) => formatPace(val)}
-          stroke={theme.palette.primary.main}
+          tick={{ fill: theme.palette.primary.main }}
+          axisLine={{ stroke: theme.palette.primary.main }}
+          tickLine={{ stroke: theme.palette.primary.main }}
         />
 
         <YAxis
           yAxisId="heart"
           orientation="right"
-          width={62}
+          width={80}
           domain={["dataMin - 5", "dataMax + 5"]}
           tickFormatter={(val: number) => `${Math.round(val)} bpm`}
           stroke="#ef4444"
@@ -67,23 +87,31 @@ function TelemetryChart({
         <YAxis
           yAxisId="elevation"
           domain={["dataMin - 10", "dataMax + 20"]}
+          width={0}
           hide
         />
 
-        <Tooltip />
-        <Legend />
-
-        <Area
-          yAxisId="elevation"
-          type="monotone"
-          dataKey="elevationFt"
-          name="Elevation"
-          stroke="#10b981"
-          fill="#10b981"
-          fillOpacity={0.15}
-          strokeWidth={1.5}
-          dot={false}
-          isAnimationActive={false}
+        <Tooltip
+          labelFormatter={(value) => `Distance: ${Number(value).toFixed(1)} mi`}
+          itemSorter={(item) => ITEM_ORDER[String(item.dataKey ?? "")] ?? 99}
+          contentStyle={{
+            backgroundColor: theme.palette.background.paper,
+            border: `1px solid ${theme.palette.divider}`,
+            color: theme.palette.text.primary,
+          }}
+          labelStyle={{ color: theme.palette.text.primary }}
+          itemStyle={{ color: theme.palette.text.primary }}
+          formatter={(value, name) => {
+            if (name === "Pace") return `${formatPace(Number(value))} /mi`;
+            if (name === "Heart Rate") return `${value} bpm`;
+            if (name === "Elevation") return `${value} ft`;
+            return value;
+          }}
+        />
+        <Legend
+          itemSorter={(item: LegendPayload) =>
+            ITEM_ORDER[String(item.dataKey ?? "")] ?? 99
+          }
         />
 
         <Line
@@ -109,6 +137,19 @@ function TelemetryChart({
           connectNulls
           isAnimationActive={false}
         />
+
+        <Area
+          yAxisId="elevation"
+          type="monotone"
+          dataKey="elevationFt"
+          name="Elevation"
+          stroke="#10b981"
+          fill="#10b981"
+          fillOpacity={0.15}
+          strokeWidth={1.5}
+          dot={false}
+          isAnimationActive={false}
+        />
       </ComposedChart>
     </ResponsiveContainer>
   );
@@ -120,6 +161,21 @@ export default function TelemetryPanel({
   telemetry: ActivityTelemetry | null;
 }) {
   const theme = useTheme();
+  const chartContainerRef = useRef<HTMLDivElement>(null);
+
+  async function handleDownload() {
+    if (!chartContainerRef.current) return;
+
+    const dataUrl = await toPng(chartContainerRef.current, {
+      backgroundColor: theme.palette.background.paper,
+      pixelRatio: 2,
+    });
+
+    const link = document.createElement("a");
+    link.download = "garmin-telemetry.png";
+    link.href = dataUrl;
+    link.click();
+  }
 
   return (
     <Paper
@@ -131,10 +187,29 @@ export default function TelemetryPanel({
         flexDirection: "column",
       }}
     >
-      <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
-        Pace, Heart Rate &amp; Elevation
-      </Typography>
       <Box
+        sx={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          mb: 1,
+        }}
+      >
+        <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+          Details
+        </Typography>
+        <MuiTooltip title="Download chart as PNG">
+          <IconButton
+            size="small"
+            onClick={handleDownload}
+            aria-label="download chart"
+          >
+            <DownloadIcon fontSize="small" />
+          </IconButton>
+        </MuiTooltip>
+      </Box>
+      <Box
+        ref={chartContainerRef}
         sx={{
           flexGrow: 1,
           bgcolor: theme.palette.mode === "light" ? "#f1f5f9" : "#202020",

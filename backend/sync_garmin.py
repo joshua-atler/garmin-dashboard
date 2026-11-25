@@ -49,4 +49,4 @@ def sync_recent_runs(limit: int = 20):
 
 
 if __name__ == "__main__":
-    sync_recent_runs(limit=20)
+    sync_recent_runs(limit=50)
