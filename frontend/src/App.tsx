@@ -1,13 +1,15 @@
 import {
   Alert,
   Box,
+  Button,
   CircularProgress,
   Container,
   CssBaseline,
+  Snackbar,
   ThemeProvider,
   createTheme,
 } from "@mui/material";
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Header from "./Header";
 import { useActivities } from "./hooks/useActivities";
 import { useActivityTelemetry } from "./hooks/useActivityTelemetry";
@@ -20,6 +22,9 @@ export default function App() {
   const [mode, setMode] = useState<"light" | "dark">("dark");
   const [mapWidth, setMapWidth] = useState(5);
   const panelsRef = useRef<HTMLDivElement>(null);
+  const didAutoSync = useRef(false);
+  const isPolling = useRef(false);
+
   const theme = createTheme({
     palette: {
       mode,
@@ -29,8 +34,13 @@ export default function App() {
     },
   });
 
-  const { activities, loading, error } = useActivities();
+  const { activities, loading, error, refetch } = useActivities();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncNotice, setSyncNotice] = useState<{
+    severity: "success" | "error";
+    message: string;
+  } | null>(null);
 
   // Automatically default to the newest activity once loaded
   const activeId = selectedId ?? activities[0]?.id ?? "";
@@ -42,9 +52,125 @@ export default function App() {
     error: telemetryError,
   } = useActivityTelemetry(activeId);
 
+  const pollSyncStatus = useCallback(async () => {
+    if (isPolling.current) return;
+    isPolling.current = true;
+    setSyncing(true);
+
+    try {
+      while (true) {
+        const res = await fetch("/api/sync/status");
+        if (!res.ok) {
+          throw new Error(`Status check failed (HTTP ${res.status})`);
+        }
+        const status = await res.json();
+
+        if (!status.syncing) {
+          if (status.error) {
+            throw new Error(status.error);
+          }
+          await refetch();
+          if (status.saved > 0) {
+            setSelectedId(null); // Snap to the newest synced run
+          }
+          setSyncNotice({
+            severity: "success",
+            message:
+              status.saved > 0
+                ? `Synced ${status.saved} new run${status.saved === 1 ? "" : "s"}.`
+                : "Already up to date.",
+          });
+          break;
+        }
+
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+    } catch (err) {
+      setSyncNotice({
+        severity: "error",
+        message: (err as Error).message,
+      });
+    } finally {
+      isPolling.current = false;
+      setSyncing(false);
+    }
+  }, [refetch]);
+
+  const handleSyncNow = useCallback(async () => {
+    if (syncing || isPolling.current) return;
+    setSyncing(true);
+    try {
+      const res = await fetch("/api/sync", { method: "POST" });
+      if (!res.ok && res.status !== 409) {
+        const body = await res.json();
+        throw new Error(body.detail || `Sync failed (HTTP ${res.status})`);
+      }
+      await pollSyncStatus();
+    } catch (err) {
+      setSyncNotice({
+        severity: "error",
+        message: (err as Error).message,
+      });
+      setSyncing(false);
+    }
+  }, [syncing, pollSyncStatus]);
+
+  // On mount / reload, re-attach to any active backend sync or auto-sync if empty
+  useEffect(() => {
+    let cancelled = false;
+
+    async function checkInitialSync() {
+      try {
+        const res = await fetch("/api/sync/status");
+        if (!res.ok || cancelled) return;
+        const status = await res.json();
+
+        if (status.syncing) {
+          didAutoSync.current = true;
+          pollSyncStatus();
+        } else if (
+          !loading &&
+          !error &&
+          activities.length === 0 &&
+          !didAutoSync.current
+        ) {
+          didAutoSync.current = true;
+          handleSyncNow();
+        }
+      } catch {
+        // Ignore initial status check errors; normal fetch error handling applies
+      }
+    }
+
+    checkInitialSync();
+    return () => {
+      cancelled = true;
+    };
+  }, [loading, error, activities.length, pollSyncStatus, handleSyncNow]);
+
+  const syncToast = (
+    <Snackbar
+      open={syncNotice !== null}
+      autoHideDuration={4000}
+      onClose={() => setSyncNotice(null)}
+      anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+    >
+      {syncNotice ? (
+        <Alert
+          severity={syncNotice.severity}
+          onClose={() => setSyncNotice(null)}
+          variant="filled"
+        >
+          {syncNotice.message}
+        </Alert>
+      ) : undefined}
+    </Snackbar>
+  );
+
   if (loading) {
     return (
       <ThemeProvider theme={theme}>
+        <CssBaseline />
         <Box sx={{ display: "flex", justifyContent: "center", mt: 8 }}>
           <CircularProgress />
         </Box>
@@ -55,6 +181,7 @@ export default function App() {
   if (error) {
     return (
       <ThemeProvider theme={theme}>
+        <CssBaseline />
         <Container maxWidth="md" sx={{ mt: 4 }}>
           <Alert severity="error">{error}</Alert>
         </Container>
@@ -65,9 +192,36 @@ export default function App() {
   if (!activity) {
     return (
       <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <Header
+          activities={activities}
+          selectedId={activeId}
+          setSelectedId={setSelectedId}
+          mode={mode}
+          setMode={setMode}
+          onSync={handleSyncNow}
+          syncing={syncing}
+        />
         <Container maxWidth="md" sx={{ mt: 4 }}>
-          <Alert severity="info">No activities found.</Alert>
+          <Alert
+            severity="info"
+            action={
+              <Button
+                color="inherit"
+                size="small"
+                onClick={handleSyncNow}
+                disabled={syncing}
+              >
+                {syncing ? "Syncing..." : "Sync Now"}
+              </Button>
+            }
+          >
+            {syncing
+              ? "No cached runs found — syncing from Garmin..."
+              : "No activities found."}
+          </Alert>
         </Container>
+        {syncToast}
       </ThemeProvider>
     );
   }
@@ -102,10 +256,11 @@ export default function App() {
         setSelectedId={setSelectedId}
         mode={mode}
         setMode={setMode}
+        onSync={handleSyncNow}
+        syncing={syncing}
       />
 
       {/* Main Content Container */}
-      {/* <Container maxWidth={"xl"} sx={{ py: 3, maxWidth: 1800 }}> */}
       <Container maxWidth="xl" sx={{ py: 3 }}>
         {/* Run Header */}
         <ActivityHeader activity={activity} />
@@ -170,6 +325,9 @@ export default function App() {
           </Box>
         </Box>
       </Container>
+
+      {/* Sync Status Toast */}
+      {syncToast}
     </ThemeProvider>
   );
 }

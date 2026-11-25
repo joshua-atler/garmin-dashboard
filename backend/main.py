@@ -1,8 +1,10 @@
 from datetime import datetime
 import json
 from pathlib import Path
-from fastapi import FastAPI, HTTPException
+from threading import Lock
+from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from sync_garmin import sync_recent_runs
 
 app = FastAPI(title="Garmin Telemetry API")
 
@@ -13,6 +15,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+sync_lock = Lock()
+last_sync_result: dict = {"saved": 0, "error": None}
+
 DATA_DIR = Path(__file__).parent / "data"
 METERS_PER_MILE = 1609.344
 FEET_PER_METER = 3.28084
@@ -21,6 +26,17 @@ FEET_PER_METER = 3.28084
 def format_mmss(total_seconds: float) -> str:
     mins, secs = divmod(int(round(total_seconds)), 60)
     return f"{mins}:{secs:02d}"
+
+
+def _run_sync_task():
+    global last_sync_result
+    try:
+        saved = sync_recent_runs(max_activities=None, only_new=False)
+        last_sync_result = {"saved": saved, "error": None}
+    except Exception as exc:
+        last_sync_result = {"saved": 0, "error": str(exc)}
+    finally:
+        sync_lock.release()
 
 
 @app.get("/api/activities")
@@ -106,3 +122,20 @@ def get_activity_telemetry(activity_id: str):
         "id": activity_id,
         "points": points,
     }
+
+
+@app.get("/api/sync/status")
+def get_sync_status():
+    return {
+        "syncing": sync_lock.locked(),
+        **last_sync_result,
+    }
+
+
+@app.post("/api/sync", status_code=202)
+def trigger_sync(background_tasks: BackgroundTasks):
+    if not sync_lock.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="Sync already in progress")
+
+    background_tasks.add_task(_run_sync_task)
+    return {"syncing": True}

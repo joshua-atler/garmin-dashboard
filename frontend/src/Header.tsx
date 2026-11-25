@@ -1,3 +1,5 @@
+import { Sync } from "@mui/icons-material";
+import { CircularProgress } from "@mui/material";
 import AppBar from "@mui/material/AppBar";
 import Button from "@mui/material/Button";
 import FormControl from "@mui/material/FormControl";
@@ -14,6 +16,8 @@ interface HeaderProps {
   setSelectedId: (id: string) => void;
   mode: "light" | "dark";
   setMode: (id: "light" | "dark") => void;
+  onSync: () => void;
+  syncing: boolean;
 }
 
 export default function Header({
@@ -22,6 +26,8 @@ export default function Header({
   setSelectedId,
   mode,
   setMode,
+  onSync,
+  syncing,
 }: HeaderProps) {
   return (
     <AppBar position="static" color="default" elevation={1}>
@@ -55,6 +61,17 @@ export default function Header({
           }}
         >
           Theme
+        </Button>
+        <Button
+          color="success"
+          variant="contained"
+          onClick={onSync}
+          disabled={syncing}
+          startIcon={
+            syncing ? <CircularProgress size={16} color="inherit" /> : <Sync />
+          }
+        >
+          {syncing ? "Syncing..." : "Sync Now"}
         </Button>
       </Toolbar>
     </AppBar>
