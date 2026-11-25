@@ -102,7 +102,7 @@ function TelemetryChart({
           labelStyle={{ color: theme.palette.text.primary }}
           itemStyle={{ color: theme.palette.text.primary }}
           formatter={(value, name) => {
-            if (name === "Pace") return `${formatPace(Number(value))} /mi`;
+            if (name === "Pace") return `${formatPace(Number(value))} `;
             if (name === "Heart Rate") return `${value} bpm`;
             if (name === "Elevation") return `${value} ft`;
             return value;
