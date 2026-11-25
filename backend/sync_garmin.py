@@ -116,8 +116,13 @@ def sync_daily_steps(
     updated = 0
     chunk_start = start_date
 
+    # sleep = client.get(f"/sleep-service/sleep/dailySleep",
+    #                    params={'date': '2026-11-20'})
+    # print('sleep')
+    # print(sleep)
+
     while chunk_start <= end_date:
-        chunk_end = min(chunk_start + timedelta(days=27), end_date)
+        chunk_end = min(chunk_start + timedelta(days=1000), end_date)
         batch = client.get(
             f"/usersummary-service/stats/steps/daily/{chunk_start.isoformat()}/{chunk_end.isoformat()}"
         )

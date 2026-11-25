@@ -52,6 +52,17 @@ export default function App() {
     error: telemetryError,
   } = useActivityTelemetry(activeId);
 
+  const [alignment, setAlignment] = useState<string | null>("running");
+
+  const handleAlignment = (
+    event: React.MouseEvent<HTMLElement>,
+    newAlignment: string | null,
+  ) => {
+    if (newAlignment !== null) {
+      setAlignment(newAlignment);
+    }
+  };
+
   const pollSyncStatus = useCallback(async () => {
     if (isPolling.current) return;
     isPolling.current = true;
@@ -194,9 +205,8 @@ export default function App() {
       <ThemeProvider theme={theme}>
         <CssBaseline />
         <Header
-          activities={activities}
-          selectedId={activeId}
-          setSelectedId={setSelectedId}
+          alignment={alignment}
+          handleAlignment={handleAlignment}
           mode={mode}
           setMode={setMode}
           onSync={handleSyncNow}
@@ -251,9 +261,8 @@ export default function App() {
 
       {/* Top Navigation & Activity Selector */}
       <Header
-        activities={activities}
-        selectedId={activeId}
-        setSelectedId={setSelectedId}
+        alignment={alignment}
+        handleAlignment={handleAlignment}
         mode={mode}
         setMode={setMode}
         onSync={handleSyncNow}
@@ -261,70 +270,78 @@ export default function App() {
       />
 
       {/* Main Content Container */}
-      <Container maxWidth="xl" sx={{ py: 3 }}>
-        {/* Run Header */}
-        <ActivityHeader activity={activity} />
 
-        {/* Summary Metrics Row */}
-        <StatCards statCards={statCards} />
-
-        {/* Split Route Map & Telemetry Chart Area */}
-        <Box
-          ref={panelsRef}
-          sx={{
-            display: "grid",
-            gridTemplateColumns: {
-              xs: "minmax(0, 1fr)",
-              lg: `minmax(0, ${mapWidth}fr) 8px minmax(0, ${12 - mapWidth}fr)`,
-            },
-            gap: 1,
-            alignItems: "start",
-          }}
-        >
-          <Box sx={{ minWidth: 0 }}>
-            <RouteMapPanel telemetry={telemetry} />
-          </Box>
-
-          <Box
-            role="separator"
-            aria-label="Resize map and telemetry panels"
-            aria-orientation="vertical"
-            tabIndex={0}
-            onPointerDown={(event) => {
-              event.currentTarget.setPointerCapture(event.pointerId);
-              resizePanels(event);
-            }}
-            onPointerMove={(event) => {
-              if (event.buttons === 1) resizePanels(event);
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "ArrowLeft")
-                setMapWidth((width) => Math.max(3, width - 0.5));
-              if (event.key === "ArrowRight")
-                setMapWidth((width) => Math.min(9, width + 0.5));
-            }}
-            sx={{
-              display: { xs: "none", lg: "block" },
-              width: 6,
-              height: "100%",
-              minHeight: 240,
-              cursor: "col-resize",
-              touchAction: "none",
-              borderRadius: 1,
-              bgcolor: "divider",
-              "&:hover, &:focus-visible": {
-                bgcolor: "primary.main",
-                outline: "none",
-              },
-            }}
+      {alignment === "running" && (
+        <Container maxWidth="xl" sx={{ py: 3 }}>
+          {/* Run Header */}
+          <ActivityHeader
+            activity={activity}
+            activities={activities}
+            selectedId={activeId}
+            setSelectedId={setSelectedId}
           />
 
-          {/* Right Panel: Pace / HR / Elevation Chart */}
-          <Box sx={{ minWidth: 0 }}>
-            <TelemetryPanel telemetry={telemetry} />
+          {/* Summary Metrics Row */}
+          <StatCards statCards={statCards} />
+
+          {/* Split Route Map & Telemetry Chart Area */}
+          <Box
+            ref={panelsRef}
+            sx={{
+              display: "grid",
+              gridTemplateColumns: {
+                xs: "minmax(0, 1fr)",
+                lg: `minmax(0, ${mapWidth}fr) 8px minmax(0, ${12 - mapWidth}fr)`,
+              },
+              gap: 1,
+              alignItems: "start",
+            }}
+          >
+            <Box sx={{ minWidth: 0 }}>
+              <RouteMapPanel telemetry={telemetry} />
+            </Box>
+
+            <Box
+              role="separator"
+              aria-label="Resize map and telemetry panels"
+              aria-orientation="vertical"
+              tabIndex={0}
+              onPointerDown={(event) => {
+                event.currentTarget.setPointerCapture(event.pointerId);
+                resizePanels(event);
+              }}
+              onPointerMove={(event) => {
+                if (event.buttons === 1) resizePanels(event);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "ArrowLeft")
+                  setMapWidth((width) => Math.max(3, width - 0.5));
+                if (event.key === "ArrowRight")
+                  setMapWidth((width) => Math.min(9, width + 0.5));
+              }}
+              sx={{
+                display: { xs: "none", lg: "block" },
+                width: 6,
+                height: "100%",
+                minHeight: 240,
+                cursor: "col-resize",
+                touchAction: "none",
+                borderRadius: 1,
+                bgcolor: "divider",
+                "&:hover, &:focus-visible": {
+                  bgcolor: "primary.main",
+                  outline: "none",
+                },
+              }}
+            />
+
+            {/* Right Panel: Pace / HR / Elevation Chart */}
+            <Box sx={{ minWidth: 0 }}>
+              <TelemetryPanel telemetry={telemetry} />
+            </Box>
           </Box>
-        </Box>
-      </Container>
+        </Container>
+      )}
 
       {/* Sync Status Toast */}
       {syncToast}

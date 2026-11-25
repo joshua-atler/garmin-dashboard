@@ -1,19 +1,20 @@
 import { Sync } from "@mui/icons-material";
-import { CircularProgress } from "@mui/material";
+import {
+  CircularProgress,
+  ToggleButton,
+  ToggleButtonGroup,
+} from "@mui/material";
 import AppBar from "@mui/material/AppBar";
 import Button from "@mui/material/Button";
-import FormControl from "@mui/material/FormControl";
-import InputLabel from "@mui/material/InputLabel";
-import MenuItem from "@mui/material/MenuItem";
-import Select from "@mui/material/Select";
 import Toolbar from "@mui/material/Toolbar";
 import Typography from "@mui/material/Typography";
-import type { ActivitySummary } from "./types";
 
 interface HeaderProps {
-  activities: ActivitySummary[];
-  selectedId: string;
-  setSelectedId: (id: string) => void;
+  alignment: string | null;
+  handleAlignment: (
+    event: React.MouseEvent<HTMLElement>,
+    newAlignment: string | null,
+  ) => void;
   mode: "light" | "dark";
   setMode: (id: "light" | "dark") => void;
   onSync: () => void;
@@ -21,14 +22,15 @@ interface HeaderProps {
 }
 
 export default function Header({
-  activities,
-  selectedId,
-  setSelectedId,
+  alignment,
+  handleAlignment,
   mode,
   setMode,
   onSync,
   syncing,
 }: HeaderProps) {
+  console.log(alignment);
+
   return (
     <AppBar position="static" color="default" elevation={1}>
       <Toolbar sx={{ gap: 2 }}>
@@ -36,7 +38,7 @@ export default function Header({
           Garmin Telemetry
         </Typography>
 
-        <FormControl size="small" sx={{ minWidth: 260 }}>
+        {/* <FormControl size="small" sx={{ minWidth: 260 }}>
           <InputLabel id="activity-select-label">Activity</InputLabel>
           <Select
             labelId="activity-select-label"
@@ -50,7 +52,17 @@ export default function Header({
               </MenuItem>
             ))}
           </Select>
-        </FormControl>
+        </FormControl> */}
+        <ToggleButtonGroup
+          value={alignment}
+          exclusive
+          onChange={handleAlignment}
+          aria-label="text alignment"
+        >
+          <ToggleButton value="running">Running</ToggleButton>
+          <ToggleButton value="steps">Steps</ToggleButton>
+          <ToggleButton value="sleep">Sleep</ToggleButton>
+        </ToggleButtonGroup>
         <Button
           variant="contained"
           onClick={() => setMode(mode === "light" ? "dark" : "light")}
