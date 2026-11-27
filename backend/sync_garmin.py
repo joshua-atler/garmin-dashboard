@@ -11,6 +11,7 @@ from garmin_personal_api import (
 
 DATA_DIR = Path(__file__).parent / "data"
 STEPS_PATH = DATA_DIR / "daily_steps.json"
+STATS_PATH = DATA_DIR / "daily_stats.json"
 
 
 def sync_all(
@@ -90,8 +91,10 @@ def sync_all(
 
         today = date.today()
         # Refresh the last 28 days on routine syncs (or pass an earlier start_date for backfill)
-        sync_daily_steps(client, start_date=today -
-                         timedelta(days=27), end_date=today)
+        # sync_daily_steps(client, start_date=today -
+        #  timedelta(days=27), end_date=today)
+        sync_daily_stats(client, start_date=today -
+                         timedelta(days=365), end_date=today)
 
     print(f"Sync complete. {saved} new run(s) cached in {DATA_DIR}.")
 
@@ -139,6 +142,46 @@ def sync_daily_steps(
     merged = sorted(existing.values(), key=lambda d: d["calendarDate"])
     STEPS_PATH.write_text(json.dumps(merged, indent=2))
     print(f"Synced {updated} day(s) of step data into {STEPS_PATH}.")
+    return updated
+
+
+def sync_daily_stats(
+    client: GarminPersonalApiClient,
+    start_date: date,
+    end_date: date,
+) -> int:
+    """
+    Fetch daily step stats in 28-day chunks and merge into data/daily_steps.json.
+    Returns the number of days updated/added.
+    """
+    existing: dict[str, dict] = {}
+    if STATS_PATH.exists():
+        for entry in json.loads(STATS_PATH.read_text()):
+            if "calendarDate" in entry:
+                existing[entry["calendarDate"]] = entry
+
+    updated = 0
+    chunk_start = start_date
+
+    while chunk_start <= end_date:
+        chunk_end = min(chunk_start + timedelta(days=1000), end_date)
+        batch = client.get(
+            f"/usersummary-service/v2/dailysummaries", params={"startDate": chunk_start.isoformat(), "endDate": chunk_end.isoformat()})
+
+        batch = batch.get("data")
+
+        for day in batch or []:
+            cal_date = day.get("calendarDate")
+            if cal_date:
+                existing[cal_date] = day
+                updated += 1
+
+        chunk_start = chunk_end + timedelta(days=1)
+        time.sleep(0.25)
+
+    merged = sorted(existing.values(), key=lambda d: d["calendarDate"])
+    STATS_PATH.write_text(json.dumps(merged, indent=2))
+    print(f"Synced {updated} day(s) of step data into {STATS_PATH}.")
     return updated
 
 

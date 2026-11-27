@@ -19,7 +19,7 @@ sync_lock = Lock()
 last_sync_result: dict = {"saved": 0, "error": None}
 
 DATA_DIR = Path(__file__).parent / "data"
-STEPS_FILE = DATA_DIR / "daily_steps.json"
+STATS_FILE = DATA_DIR / "daily_stats.json"
 METERS_PER_MILE = 1609.344
 FEET_PER_METER = 3.28084
 
@@ -144,16 +144,16 @@ def trigger_sync(background_tasks: BackgroundTasks):
 
 @app.get("/api/steps")
 def get_daily_steps(start: str | None = None, end: str | None = None):
-    if not STEPS_FILE.exists():
+    if not STATS_FILE.exists():
         return []
 
-    days = json.loads(STEPS_FILE.read_text())
+    days = json.loads(STATS_FILE.read_text())
     return [
         {
             "date": d["calendarDate"],
-            "steps": d.get("totalSteps") or 0,
-            "goal": d.get("stepGoal") or 0,
-            "distanceMi": round((d.get("totalDistance") or 0) / METERS_PER_MILE, 2),
+            "steps": d.get("movement").get("steps").get("value") or 0,
+            "goal": d.get("movement").get("steps").get("goal") or 0,
+            "distanceMi": round((d.get("movement").get("steps").get("distanceInMeters") or 0) / METERS_PER_MILE, 2),
         }
         for d in days
         if (start is None or d["calendarDate"] >= start)
