@@ -9,7 +9,7 @@ import {
   Typography,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   Bar,
   Brush,
@@ -23,29 +23,85 @@ import {
 } from "recharts";
 import { useSteps } from "./hooks/useSteps";
 
+type Granularity = "daily" | "weekly" | "monthly";
+type RangePreset = "30d" | "90d" | "all";
+
+const GRANULARITY_CONFIG: Record<
+  Granularity,
+  {
+    windowSize: number;
+    unitLabel: string;
+    avgLabel: string;
+    barName: string;
+    spans: Record<RangePreset, number>;
+  }
+> = {
+  daily: {
+    windowSize: 7,
+    unitLabel: "days",
+    avgLabel: "7-Day Moving Avg",
+    barName: "Daily Steps",
+    spans: { "30d": 30, "90d": 90, all: Infinity },
+  },
+  weekly: {
+    windowSize: 4,
+    unitLabel: "weeks",
+    avgLabel: "4-Week Moving Avg",
+    barName: "Avg Daily Steps",
+    spans: { "30d": 5, "90d": 13, all: Infinity },
+  },
+  monthly: {
+    windowSize: 3,
+    unitLabel: "months",
+    avgLabel: "3-Month Moving Avg",
+    barName: "Avg Daily Steps",
+    spans: { "30d": 24, "90d": 24, all: Infinity },
+  },
+};
+
+function getWeekStartKey(dateStr: string): string {
+  const [year, month, day] = dateStr.split("-").map(Number);
+  const d = new Date(year, month - 1, day);
+  // Monday = 0, Sunday = 6
+  const dayOfWeek = (d.getDay() + 6) % 7;
+  d.setDate(d.getDate() - dayOfWeek);
+
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${dd}`;
+}
+
 export default function Steps() {
   const theme = useTheme();
-
   const { steps, loading: stepsLoading, error: stepsError } = useSteps();
 
-  const [granularity, setGranularity] = useState<"daily" | "monthly">("daily");
+  const [granularity, setGranularity] = useState<Granularity>("daily");
   const [showSmoothed, setShowSmoothed] = useState(true);
-  const [rangePreset, setRangePreset] = useState<"30d" | "90d" | "all">("30d");
-  const [brushRange, setBrushRange] = useState<{
+  const [rangePreset, setRangePreset] = useState<RangePreset | null>("30d");
+  const [customRange, setCustomRange] = useState<{
     startIndex: number;
     endIndex: number;
-  }>({ startIndex: 0, endIndex: 0 });
+  } | null>(null);
+  const isUserDragging = useRef(false);
 
-  // Group into YYYY-MM buckets using daily averages so partial months remain comparable
-  const monthlySteps = useMemo(() => {
+  const config = GRANULARITY_CONFIG[granularity];
+
+  const aggregatedSteps = useMemo(() => {
+    if (granularity === "daily") return steps;
+
     const buckets = new Map<
       string,
       { totalSteps: number; totalGoal: number; days: number }
     >();
 
     for (const day of steps) {
-      const monthKey = day.date.slice(0, 7); // "YYYY-MM"
-      const current = buckets.get(monthKey) ?? {
+      const key =
+        granularity === "monthly"
+          ? day.date.slice(0, 7)
+          : getWeekStartKey(day.date);
+
+      const current = buckets.get(key) ?? {
         totalSteps: 0,
         totalGoal: 0,
         days: 0,
@@ -53,25 +109,22 @@ export default function Steps() {
       current.totalSteps += day.steps;
       current.totalGoal += day.goal;
       current.days += 1;
-      buckets.set(monthKey, current);
+      buckets.set(key, current);
     }
 
-    return Array.from(buckets.entries()).map(([month, agg]) => ({
-      date: month,
+    return Array.from(buckets.entries()).map(([bucketDate, agg]) => ({
+      date: bucketDate,
       steps: Math.round(agg.totalSteps / agg.days),
       goal: Math.round(agg.totalGoal / agg.days),
       totalSteps: agg.totalSteps,
       days: agg.days,
     }));
-  }, [steps]);
+  }, [granularity, steps]);
 
   const chartData = useMemo(() => {
-    const source = granularity === "monthly" ? monthlySteps : steps;
-    const windowSize = granularity === "monthly" ? 3 : 7; // 3-month vs 7-day rolling avg
-
-    return source.map((item, index) => {
-      const start = Math.max(0, index - windowSize + 1);
-      const slice = source.slice(start, index + 1);
+    return aggregatedSteps.map((item, index) => {
+      const start = Math.max(0, index - config.windowSize + 1);
+      const slice = aggregatedSteps.slice(start, index + 1);
       const avg =
         slice.reduce((sum, entry) => sum + entry.steps, 0) / slice.length;
 
@@ -80,44 +133,31 @@ export default function Steps() {
         rollingAvg: Math.round(avg),
       };
     });
-  }, [granularity, monthlySteps, steps]);
+  }, [aggregatedSteps, config.windowSize]);
 
-  // Reset brush window whenever granularity, data length, or preset changes
-  useEffect(() => {
+  const lastIndex = Math.max(0, chartData.length - 1);
+  const defaultPreset: RangePreset = granularity === "monthly" ? "all" : "30d";
+  const defaultSpan = config.spans[defaultPreset];
+
+  const activeRange = customRange ?? {
+    startIndex: Math.max(0, chartData.length - defaultSpan),
+    endIndex: lastIndex,
+  };
+
+  const safeStart = Math.min(activeRange.startIndex, lastIndex);
+  const safeEnd = Math.min(activeRange.endIndex, lastIndex);
+  const visibleCount = chartData.length > 0 ? safeEnd - safeStart + 1 : 0;
+
+  const applyPreset = (preset: RangePreset) => {
     if (chartData.length === 0) return;
     const end = chartData.length - 1;
+    const span = config.spans[preset];
 
-    if (granularity === "monthly") {
-      // Show all months by default (or up to 24 months)
-      setBrushRange({
-        startIndex: Math.max(0, chartData.length - 24),
-        endIndex: end,
-      });
-      return;
-    }
-
-    const span =
-      rangePreset === "30d"
-        ? 30
-        : rangePreset === "90d"
-          ? 90
-          : chartData.length;
-    setBrushRange({
+    setCustomRange({
       startIndex: Math.max(0, chartData.length - span),
       endIndex: end,
     });
-  }, [chartData.length, granularity, rangePreset]);
-
-  const safeStart = Math.min(
-    brushRange.startIndex,
-    Math.max(0, chartData.length - 1),
-  );
-  const safeEnd = Math.min(
-    brushRange.endIndex,
-    Math.max(0, chartData.length - 1),
-  );
-  const visibleCount = chartData.length > 0 ? safeEnd - safeStart + 1 : 0;
-  const unitLabel = granularity === "monthly" ? "months" : "days";
+  };
 
   return (
     <Box
@@ -155,11 +195,15 @@ export default function Steps() {
                 size="small"
                 exclusive
                 value={granularity}
-                onChange={(_, val) => {
-                  if (val) setGranularity(val);
+                onChange={(_, val: Granularity | null) => {
+                  if (!val) return;
+                  setGranularity(val);
+                  setRangePreset(val === "daily" ? "30d" : null);
+                  setCustomRange(null);
                 }}
               >
                 <ToggleButton value="daily">Daily</ToggleButton>
+                <ToggleButton value="weekly">Weekly</ToggleButton>
                 <ToggleButton value="monthly">Monthly</ToggleButton>
               </ToggleButtonGroup>
 
@@ -171,38 +215,47 @@ export default function Steps() {
                     onChange={(e) => setShowSmoothed(e.target.checked)}
                   />
                 }
-                label={
-                  granularity === "monthly"
-                    ? "3-Month Moving Avg"
-                    : "7-Day Moving Avg"
-                }
+                label={config.avgLabel}
               />
 
               <Typography variant="caption" color="text.secondary">
-                Showing {visibleCount} of {chartData.length} {unitLabel} (
-                {chartData[safeStart]?.date} – {chartData[safeEnd]?.date})
+                Showing {visibleCount} of {chartData.length} {config.unitLabel}{" "}
+                ({chartData[safeStart]?.date} – {chartData[safeEnd]?.date})
               </Typography>
             </Box>
 
-            {granularity === "daily" && (
+            {granularity !== "monthly" && (
               <ToggleButtonGroup
                 size="small"
                 exclusive
                 value={rangePreset}
-                onChange={(_, val) => {
-                  if (val) setRangePreset(val);
+                onChange={(_, val: RangePreset | null) => {
+                  if (!val) return;
+                  setRangePreset(val);
+                  applyPreset(val);
                 }}
               >
                 <ToggleButton value="30d">30D</ToggleButton>
                 <ToggleButton value="90d">90D</ToggleButton>
                 <ToggleButton value="all">
-                  All ({chartData.length}d)
+                  All ({chartData.length}
+                  {config.unitLabel[0]})
                 </ToggleButton>
               </ToggleButtonGroup>
             )}
           </Box>
 
-          <Box sx={{ flexGrow: 1, minHeight: 0 }}>
+          <Box
+            sx={{ flexGrow: 1, minHeight: 0 }}
+            onPointerDown={() => {
+              isUserDragging.current = true;
+            }}
+            onPointerUp={() => {
+              setTimeout(() => {
+                isUserDragging.current = false;
+              }, 0);
+            }}
+          >
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" />
@@ -217,11 +270,7 @@ export default function Steps() {
                 />
                 <Bar
                   dataKey="steps"
-                  name={
-                    granularity === "monthly"
-                      ? "Avg Daily Steps"
-                      : "Daily Steps"
-                  }
+                  name={config.barName}
                   fill="#1976d2"
                   fillOpacity={showSmoothed ? 0.35 : 1}
                 />
@@ -229,9 +278,7 @@ export default function Steps() {
                   <Line
                     type="monotone"
                     dataKey="rollingAvg"
-                    name={
-                      granularity === "monthly" ? "3-Month Avg" : "7-Day Avg"
-                    }
+                    name={config.avgLabel}
                     stroke="#f59e0b"
                     strokeWidth={2}
                     dot={granularity === "monthly"}
@@ -239,16 +286,19 @@ export default function Steps() {
                 )}
                 {chartData.length > 1 && (
                   <Brush
+                    key={`${granularity}-${chartData.length}`}
                     dataKey="date"
-                    height={36}
+                    height={32}
                     startIndex={safeStart}
                     endIndex={safeEnd}
                     onChange={(next) => {
+                      if (!isUserDragging.current) return;
                       if (
                         typeof next.startIndex === "number" &&
                         typeof next.endIndex === "number"
                       ) {
-                        setBrushRange({
+                        setRangePreset(null);
+                        setCustomRange({
                           startIndex: next.startIndex,
                           endIndex: next.endIndex,
                         });
@@ -256,17 +306,8 @@ export default function Steps() {
                     }}
                     stroke={theme.palette.primary.main}
                     fill={theme.palette.action.hover}
-                    travellerWidth={12}
-                  >
-                    <ComposedChart data={chartData}>
-                      <Bar
-                        dataKey="steps"
-                        fill={theme.palette.text.disabled}
-                        fillOpacity={0.45}
-                        isAnimationActive={false}
-                      />
-                    </ComposedChart>
-                  </Brush>
+                    travellerWidth={10}
+                  />
                 )}
               </ComposedChart>
             </ResponsiveContainer>
