@@ -10,9 +10,19 @@ import {
   createTheme,
 } from "@mui/material";
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import Header from "./Header";
 import { useActivities } from "./hooks/useActivities";
 import { useActivityTelemetry } from "./hooks/useActivityTelemetry";
+import { useSteps } from "./hooks/useSteps";
 import RouteMapPanel from "./RouteMapPanel";
 import StatCards from "./StatCards";
 import ActivityHeader from "./Summary";
@@ -34,7 +44,12 @@ export default function App() {
     },
   });
 
-  const { activities, loading, error, refetch } = useActivities();
+  const {
+    activities,
+    loading: actLoading,
+    error: actError,
+    refetch: actRefetch,
+  } = useActivities();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncNotice, setSyncNotice] = useState<{
@@ -51,6 +66,16 @@ export default function App() {
     loading: telemetryLoading,
     error: telemetryError,
   } = useActivityTelemetry(activeId);
+
+  const {
+    steps,
+    loading: stepsLoading,
+    error: stepsError,
+    refetch: stepsRefetch,
+  } = useSteps();
+
+  console.log("steps");
+  console.log(steps);
 
   const [alignment, setAlignment] = useState<string | null>("running");
 
@@ -80,7 +105,7 @@ export default function App() {
           if (status.error) {
             throw new Error(status.error);
           }
-          await refetch();
+          await actRefetch();
           if (status.saved > 0) {
             setSelectedId(null); // Snap to the newest synced run
           }
@@ -105,7 +130,7 @@ export default function App() {
       isPolling.current = false;
       setSyncing(false);
     }
-  }, [refetch]);
+  }, [actRefetch]);
 
   const handleSyncNow = useCallback(async () => {
     if (syncing || isPolling.current) return;
@@ -140,8 +165,8 @@ export default function App() {
           didAutoSync.current = true;
           pollSyncStatus();
         } else if (
-          !loading &&
-          !error &&
+          !actLoading &&
+          !actError &&
           activities.length === 0 &&
           !didAutoSync.current
         ) {
@@ -157,7 +182,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [loading, error, activities.length, pollSyncStatus, handleSyncNow]);
+  }, [actLoading, actError, activities.length, pollSyncStatus, handleSyncNow]);
 
   const syncToast = (
     <Snackbar
@@ -178,7 +203,7 @@ export default function App() {
     </Snackbar>
   );
 
-  if (loading) {
+  if (actLoading) {
     return (
       <ThemeProvider theme={theme}>
         <CssBaseline />
@@ -189,12 +214,12 @@ export default function App() {
     );
   }
 
-  if (error) {
+  if (actError) {
     return (
       <ThemeProvider theme={theme}>
         <CssBaseline />
         <Container maxWidth="md" sx={{ mt: 4 }}>
-          <Alert severity="error">{error}</Alert>
+          <Alert severity="error">{actError}</Alert>
         </Container>
       </ThemeProvider>
     );
@@ -254,6 +279,20 @@ export default function App() {
     const width = ((event.clientX - bounds.left) / bounds.width) * 12;
     setMapWidth(Math.max(3, Math.min(9, width)));
   };
+
+  const stepChartData = Array.isArray(steps)
+    ? steps
+        .map((row, index) => {
+          // const row = item as Record<string, unknown>;
+          return {
+            date: String(row.date ?? row.calendarDate ?? row.day ?? index + 1),
+            steps: Number(
+              row.totalSteps ?? row.steps ?? row.stepCount ?? row.value ?? 0,
+            ),
+          };
+        })
+        .filter((row) => Number.isFinite(row.steps))
+    : [];
 
   return (
     <ThemeProvider theme={theme}>
@@ -339,6 +378,44 @@ export default function App() {
             <Box sx={{ minWidth: 0 }}>
               <TelemetryPanel telemetry={telemetry} />
             </Box>
+          </Box>
+        </Container>
+      )}
+      {alignment === "steps" && (
+        <Container maxWidth="xl" sx={{ py: 3 }}>
+          <Box
+            sx={{
+              height: 360,
+              p: 2,
+              bgcolor: "background.paper",
+              borderRadius: 2,
+            }}
+          >
+            {stepsError ? (
+              <Alert severity="error">{stepsError}</Alert>
+            ) : stepsLoading ? (
+              <Box sx={{ display: "flex", justifyContent: "center", pt: 8 }}>
+                <CircularProgress />
+              </Box>
+            ) : stepChartData.length === 0 ? (
+              <Alert severity="info">No step data available.</Alert>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={stepChartData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" />
+                  <YAxis />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: theme.palette.background.paper,
+                      border: `1px solid ${theme.palette.divider}`,
+                      color: theme.palette.text.primary,
+                    }}
+                  />
+                  <Bar dataKey="steps" fill="#1976d2" />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </Box>
         </Container>
       )}

@@ -11,16 +11,16 @@ export interface ActivitySummary {
   trainingEffectLabel: string;
 }
 
-export type Activity = {
+export interface Activity {
   title: string;
   trainingEffectLabel: string;
   date: string;
-};
+}
 
-export type StatCard = {
+export interface StatCard {
   label: string;
   value: string;
-};
+}
 
 export interface TelemetryPoint {
   lat: number;
@@ -34,4 +34,11 @@ export interface TelemetryPoint {
 export interface ActivityTelemetry {
   id: string;
   points: TelemetryPoint[];
+}
+
+export interface Steps {
+  calendarDate: string;
+  totalSteps: number;
+  totalDistance: number;
+  stepGoal: number;
 }

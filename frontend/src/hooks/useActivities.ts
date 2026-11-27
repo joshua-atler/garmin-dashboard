@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { ActivitySummary } from "./types";
+import type { ActivitySummary } from "../types";
 
 const CACHE_KEY = "garmin_activities_cache";
 
